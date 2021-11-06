@@ -65,9 +65,8 @@ std::vector<float> eig2stdvec( MatrixXd _eigmat )
     return vec;
 } // eig2stdvec
 
-
-double SCManager::distDirectSC ( MatrixXd &_sc1, MatrixXd &_sc2 )
-{
+// 计算固定列的两个scancontext
+double SCManager::distDirectSC ( MatrixXd &_sc1, MatrixXd &_sc2 ){
     int num_eff_cols = 0; // i.e., to exclude all-nonzero sector
     double sum_sector_similarity = 0;
     for ( int col_idx = 0; col_idx < _sc1.cols(); col_idx++ )
@@ -89,7 +88,7 @@ double SCManager::distDirectSC ( MatrixXd &_sc1, MatrixXd &_sc2 )
 
 } // distDirectSC
 
-
+// 先通过关键值快速搜索进行矩阵对齐
 int SCManager::fastAlignUsingVkey( MatrixXd & _vkey1, MatrixXd & _vkey2)
 {
     int argmin_vkey_shift = 0;
@@ -194,7 +193,7 @@ MatrixXd SCManager::makeScancontext( pcl::PointCloud<SCPointType> & _scan_down )
     return desc;
 } // SCManager::makeScancontext
 
-
+// 计算行向量的均值作为Key
 MatrixXd SCManager::makeRingkeyFromScancontext( Eigen::MatrixXd &_desc )
 {
     /* 
@@ -210,7 +209,7 @@ MatrixXd SCManager::makeRingkeyFromScancontext( Eigen::MatrixXd &_desc )
     return invariant_key;
 } // SCManager::makeRingkeyFromScancontext
 
-
+// 计算列向量均值作为Key
 MatrixXd SCManager::makeSectorkeyFromScancontext( Eigen::MatrixXd &_desc )
 {
     /* 
@@ -230,9 +229,9 @@ MatrixXd SCManager::makeSectorkeyFromScancontext( Eigen::MatrixXd &_desc )
 void SCManager::makeAndSaveScancontextAndKeys( pcl::PointCloud<SCPointType> & _scan_down )
 {
     Eigen::MatrixXd sc = makeScancontext(_scan_down); // v1 
-    Eigen::MatrixXd ringkey = makeRingkeyFromScancontext( sc );
-    Eigen::MatrixXd sectorkey = makeSectorkeyFromScancontext( sc );
-    std::vector<float> polarcontext_invkey_vec = eig2stdvec( ringkey );
+    Eigen::MatrixXd ringkey = makeRingkeyFromScancontext( sc );         // 行向量均值
+    Eigen::MatrixXd sectorkey = makeSectorkeyFromScancontext( sc );     // 列向量均值
+    std::vector<float> polarcontext_invkey_vec = eig2stdvec( ringkey ); //
 
     polarcontexts_.push_back( sc ); 
     polarcontext_invkeys_.push_back( ringkey );
@@ -252,8 +251,9 @@ std::pair<int, float> SCManager::detectLoopClosureID ( void )
     auto curr_desc = polarcontexts_.back(); // current observation (query)
 
     /* 
-     * step 1: candidates from ringkey tree_
+     * step 1: candidates from ringkey tree_ 用行向量key来建kdtree
      */
+    // 如果搜索的关键帧数量小于设定的间隔数量，则认为还没有实现回环
     if( polarcontext_invkeys_mat_.size() < NUM_EXCLUDE_RECENT + 1)
     {
         std::pair<int, float> result {loop_id, 0.0};
@@ -261,6 +261,7 @@ std::pair<int, float> SCManager::detectLoopClosureID ( void )
     }
 
     // tree_ reconstruction (not mandatory to make everytime)
+    // 重新建树，进行更新
     if( tree_making_period_conter % TREE_MAKING_PERIOD_ == 0) // to save computation cost
     {
         TicToc t_tree_construction;
@@ -268,7 +269,8 @@ std::pair<int, float> SCManager::detectLoopClosureID ( void )
         polarcontext_invkeys_to_search_.clear();
         polarcontext_invkeys_to_search_.assign( polarcontext_invkeys_mat_.begin(), polarcontext_invkeys_mat_.end() - NUM_EXCLUDE_RECENT ) ;
 
-        polarcontext_tree_.reset(); 
+        polarcontext_tree_.reset();
+        // 以行向量为搜索方式建树，深度就是
         polarcontext_tree_ = std::make_unique<InvKeyTree>(PC_NUM_RING /* dim */, polarcontext_invkeys_to_search_, 10 /* max leaf */ );
         // tree_ptr_->index->buildIndex(); // inernally called in the constructor of InvKeyTree (for detail, refer the nanoflann and KDtreeVectorOfVectorsAdaptor)
         t_tree_construction.toc("Tree construction");
